@@ -13,6 +13,7 @@ on:
 
 jobs:
   build:
+    environment: prod
     runs-on: ubuntu-latest
 
     steps:
@@ -30,4 +31,7 @@ jobs:
           pip install -r python/requirements.txt
 
       - name: Download
-        run: python python/main.py -s ${{ github.event.inputs.symbols }} -i ${{ github.event.inputs.interval }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: python python/download-kline.py -s ${{ github.event.inputs.symbols }} -i ${{ github.event.inputs.interval }} -skip-monthly 1 -t spot

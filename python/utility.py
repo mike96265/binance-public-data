@@ -7,6 +7,9 @@ import urllib.request
 from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentTypeError
 from pathlib import Path
 
+import boto3
+from botocore.exceptions import NoCredentialsError
+
 from enums import *
 
 
@@ -33,7 +36,7 @@ def get_all_symbols(type):
     return list(map(lambda symbol: symbol['symbol'], json.loads(response)['symbols']))
 
 
-def download_file(base_path, file_name, date_range=None, folder=None):
+def download_file(base_path, file_name, date_range=None, folder=None, target=None):
     download_path = "{}{}".format(base_path, file_name)
     if folder:
         base_path = os.path.join(folder, base_path)
@@ -57,8 +60,12 @@ def download_file(base_path, file_name, date_range=None, folder=None):
         if length:
             length = int(length)
             blocksize = max(4096, length // 100)
+        if not target:
+            writable = open(save_path, 'wb')
+        else:
+            writable = open(target, 'wb')
 
-        with open(save_path, 'wb') as out_file:
+        with writable as out_file:
             dl_progress = 0
             print("\nFile Download: {}".format(save_path))
             while True:
@@ -123,6 +130,21 @@ def get_path(trading_type, market_data_type, time_period, symbol, interval=None)
     else:
         path = f'{trading_type_path}/{time_period}/{market_data_type}/{symbol.upper()}/'
     return path
+
+
+def upload_to_aws(local_path, s3_path):
+    bucket = 'finance'
+    s3 = boto3.client('s3', endpoint_url='https://b3c03e2f679658ac453eacdb31eae290.r2.cloudflarestorage.com')
+    try:
+        s3.upload_file(local_path, bucket, s3_path)
+        print(f"Upload Successful: {s3_path}")
+        return True
+    except FileNotFoundError:
+        print("The file was not found")
+        return False
+    except NoCredentialsError:
+        print("Credentials not available")
+        return False
 
 
 def get_parser(parser_type):
