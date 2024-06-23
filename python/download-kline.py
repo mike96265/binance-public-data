@@ -38,23 +38,43 @@ def download_monthly_klines(trading_type, symbols, num_symbols, intervals, years
         end_date = convert_to_date_object(end_date)
 
     print("Found {} symbols".format(num_symbols))
-
+    names = ["open_time", "open", "high", "low", "close", "volume", "close_time", "quote_volume", "count",
+             "taker_buy_volume", "taker_buy_quote_volume", "ignore"]
     for symbol in symbols:
         print("[{}/{}] - start download monthly {} klines ".format(current + 1, num_symbols, symbol))
         for interval in intervals:
+            dfs = []
             for year in years:
                 for month in months:
                     current_date = convert_to_date_object('{}-{}-01'.format(year, month))
                     if current_date >= start_date and current_date <= end_date:
                         path = get_path(trading_type, "klines", "monthly", symbol, interval)
                         file_name = "{}-{}-{}-{}.zip".format(symbol.upper(), interval, year, '{:02d}'.format(month))
-                        download_file(path, file_name, date_range, folder)
+
+                        with tempfile.NamedTemporaryFile(dir="/dev/shm", delete=False) as temp_file:
+                            tmp_name = temp_file.name
+
+                        download_file(path, file_name, date_range, folder, tmp_name)
+                        try:
+                            with zipfile.ZipFile(tmp_name) as zip_file:
+                                for file_name in zip_file.namelist():
+                                    with zip_file.open(file_name) as f:
+                                        df = pd.read_csv(f, header=None, names=names)
+                                    dfs.append(df)
+                        except zipfile.BadZipFile:
+                            continue
+                        finally:
+                            os.remove(tmp_name)
 
                         if checksum == 1:
                             checksum_path = get_path(trading_type, "klines", "monthly", symbol, interval)
                             checksum_file_name = "{}-{}-{}-{}.zip.CHECKSUM".format(symbol.upper(), interval, year,
                                                                                    '{:02d}'.format(month))
                             download_file(checksum_path, checksum_file_name, date_range, folder)
+            concat = pd.concat(dfs, ignore_index=True)
+            feather_file = f"{symbol}-{interval}.feather"
+            concat.to_feather(feather_file, compression="zstd")
+            upload_to_aws(feather_file, f"{symbol}/klines/{interval}.feather")
 
         current += 1
 
